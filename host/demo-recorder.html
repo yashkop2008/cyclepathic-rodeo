@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demo Recorder</title>
+  <!-- Dev tool: plays a scripted demo (big screen + one phone, bots racing) and records it to a video.
+       Open /host/demo-recorder.html, then call runDemo({ record: true }) from the console. -->
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@800;900&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #1e1b2e; overflow: hidden; }
+    /* The two game pages run underneath; the composite canvas covers them. */
+    #host { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; border: 0; }
+    #phone { position: absolute; left: 0; top: 0; width: 844px; height: 390px; border: 0; }
+    #comp { position: absolute; inset: 0; width: 100vw; height: 100vh; object-fit: contain; background: #1e1b2e; z-index: 2; }
+  </style>
+</head>
+<body>
+  <iframe id="host" src="/host/"></iframe>
+  <iframe id="phone"></iframe>
+  <canvas id="comp" width="1920" height="1080"></canvas>
+  <script type="module">
+    import { drawRigAt, PLAYERS } from '/shared/rig.js';
+
+    const W = 1920;
+    const H = 1080;
+    const comp = document.getElementById('comp');
+    const ctx = comp.getContext('2d');
+    const hostEl = document.getElementById('host');
+    const phoneEl = document.getElementById('phone');
+    const hostBuf = Object.assign(document.createElement('canvas'), { width: 1280, height: 720 });
+    const phoneBuf = Object.assign(document.createElement('canvas'), { width: 844, height: 390 });
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const until = async (fn, ms = 20000) => { const t0 = performance.now(); while (!fn()) { if (performance.now() - t0 > ms) throw new Error('timeout'); await sleep(50); } };
+    window.demoStatus = 'loading';
+
+    // ------------------------------------------------------------ state shown on the composite
+    const view = { mode: 'title', modeAt: 0, cap: null, capAt: 0, tilt: 0 };
+    const setMode = (m) => { view.mode = m; view.modeAt = performance.now(); };
+    const caption = (title, sub = '') => { view.cap = { title, sub }; view.capAt = performance.now(); };
+
+    function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+    function outlined(text, x, y, size, fill, stroke = '#1E1B2E', lw = size / 5, align = 'center') {
+      ctx.font = `${size}px "Lilita One"`;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = lw * 2;
+      ctx.strokeStyle = stroke;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, x, y);
+    }
+    function sky(top = '#56CFE1', bottom = '#C8F7FF') {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, top); g.addColorStop(1, bottom);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // grassy hills along the bottom
+      ctx.fillStyle = '#80ED99';
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 20) ctx.lineTo(x, H - 170 - Math.sin(x / 210) * 30);
+      ctx.lineTo(W, H); ctx.fill();
+      ctx.fillStyle = '#8D5B34';
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 20) ctx.lineTo(x, H - 100 - Math.sin(x / 140) * 18);
+      ctx.lineTo(W, H); ctx.fill();
+      ctx.strokeStyle = '#1E5E1A'; ctx.lineWidth = 6; ctx.fillStyle = '#52D14C';
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 20) ctx.lineTo(x, H - 108 - Math.sin(x / 140) * 18);
+      for (let x = W; x >= 0; x -= 20) ctx.lineTo(x, H - 84 - Math.sin(x / 140) * 18);
+      ctx.closePath(); ctx.fill();
+    }
+
+    /** A phone held sideways, rotated by the player's real tilt, showing the phone's own game view. */
+    function phoneDevice(cx, cy, w, angle, label) {
+      const sh = (w * phoneBuf.height) / phoneBuf.width;
+      const b = w * 0.035;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      rr(-w / 2 - b + 10, -sh / 2 - b + 16, w + b * 2, sh + b * 2, b * 2.2); ctx.fill();
+      ctx.fillStyle = '#14121F';
+      rr(-w / 2 - b, -sh / 2 - b, w + b * 2, sh + b * 2, b * 2.2); ctx.fill();
+      ctx.lineWidth = 4; ctx.strokeStyle = '#4B4560'; ctx.stroke();
+      ctx.save();
+      rr(-w / 2, -sh / 2, w, sh, b * 1.2); ctx.clip();
+      ctx.drawImage(phoneBuf, -w / 2, -sh / 2, w, sh);
+      ctx.restore();
+      ctx.restore();
+      if (label) outlined(label, cx, cy - sh / 2 - b - 46, 34, '#FFFFFF', '#1E1B2E', 6);
+    }
+
+    function drawCaption(now) {
+      const c = view.cap;
+      if (!c) return;
+      const k = Math.min(1, (now - view.capAt) / 350);
+      ctx.save();
+      ctx.globalAlpha = k;
+      ctx.translate(0, (1 - k) * 30);
+      ctx.font = '64px "Lilita One"';
+      const tw = ctx.measureText(c.title).width;
+      ctx.font = '900 32px Nunito';
+      const sw = c.sub ? ctx.measureText(c.sub).width : 0;
+      const bw = Math.max(tw, sw) + 70;
+      const bh = c.sub ? 150 : 104;
+      const x = 48;
+      const y = H - 96 - bh;
+      ctx.fillStyle = 'rgba(20,18,31,0.88)';
+      rr(x, y, bw, bh, 26); ctx.fill();
+      ctx.lineWidth = 5; ctx.strokeStyle = '#FFD60A'; ctx.stroke();
+      outlined(c.title, x + 35, y + 54, 64, '#FFD60A', '#1E1B2E', 8, 'left');
+      if (c.sub) {
+        ctx.font = '900 32px Nunito'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
+        ctx.fillText(c.sub, x + 35, y + 112);
+      }
+      ctx.restore();
+    }
+
+    function titleCard(now, end) {
+      sky();
+      const bob = Math.sin(now / 600) * 10;
+      outlined('CYCLEPATHIC', W / 2, 250 + bob, 170, '#FFD60A', '#1E1B2E', 22);
+      outlined('RODEO', W / 2, 410 + bob * 0.8, 150, '#FF3B5C', '#1E1B2E', 22);
+      const hop = Math.abs(Math.sin(now / 330)) * 40;
+      const off = end ? 780 : 560; // the end card's text runs wider
+      drawRigAt(ctx, W / 2 + off, 760 - hop, Math.sin(now / 330) * 0.15, 1.9, 'classic', Math.floor(now / 900) % PLAYERS.length, { pose: hop > 22 ? 'airborne' : 'riding', wheelAngle: now / 90 });
+      drawRigAt(ctx, W / 2 - off - 20, 760 - Math.abs(Math.sin(now / 330 + 1.5)) * 40, -0.1, 1.9, end ? 'astronaut' : 'cowboy', 1 + (Math.floor(now / 900) % 5), { pose: 'riding', wheelAngle: now / 90 });
+      if (end) {
+        outlined('YOUR PHONE IS THE GROUND.', W / 2, 560, 64, '#FFFFFF', '#1E1B2E', 10);
+        ctx.font = '900 38px Nunito'; ctx.fillStyle = '#1E1B2E'; ctx.textAlign = 'center';
+        ctx.fillText('HackPSU Fall 2026  ·  General Track: The Mystery Stack', W / 2, 650);
+        ctx.fillText('Phaser 3 · Matter.js · Socket.IO · Node.js', W / 2, 705);
+      } else {
+        outlined('YOUR PHONE IS THE GROUND.', W / 2, 560, 72, '#FFFFFF', '#1E1B2E', 10);
+        ctx.font = '900 40px Nunito'; ctx.fillStyle = '#1E1B2E'; ctx.textAlign = 'center';
+        ctx.fillText('A tilt-to-race party game for 1–6 players', W / 2, 650);
+      }
+    }
+
+    function frame() {
+      const now = performance.now();
+      ctx.clearRect(0, 0, W, H);
+      const m = view.mode;
+      if (m === 'title' || m === 'end') titleCard(now, m === 'end');
+      else if (m === 'phonefocus') {
+        sky('#13213A', '#2B4A6F');
+        ctx.drawImage(hostBuf, 60, 50, 560, 315);
+        ctx.lineWidth = 5; ctx.strokeStyle = '#FFFFFF'; ctx.strokeRect(60, 50, 560, 315);
+        outlined('BIG SCREEN', 340, 400, 32, '#FFFFFF', '#1E1B2E', 6);
+        phoneDevice(1130, 520, 1160, view.tilt, "PLAYER'S PHONE (TILTED IN REAL LIFE)");
+      } else {
+        ctx.drawImage(hostBuf, 0, 0, W, H);
+        if (m === 'race') phoneDevice(1560, 760, 600, view.tilt, "MAX'S PHONE");
+      }
+      if (m !== 'title' && m !== 'end') drawCaption(now);
+      // quick fade between sections
+      const f = 1 - Math.min(1, (now - view.modeAt) / 350);
+      if (f > 0) { ctx.fillStyle = `rgba(20,18,31,${f})`; ctx.fillRect(0, 0, W, H); }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // ------------------------------------------------------------ the two game pages
+    let hostWin;
+    let net;
+    let phoneWin;
+    let cur = 0;
+
+    async function setup() {
+      await document.fonts.load('64px "Lilita One"');
+      await document.fonts.load('900 32px Nunito');
+      hostWin = hostEl.contentWindow;
+      // (Until main.js runs, window.game is the #game element, not the Phaser game.)
+      await until(() => hostWin.game?.scene?.getScene?.('lobby')?.sys.isActive());
+      net = await hostWin.eval("import('/host/js/net.js')");
+      await until(() => net.room.code);
+      // Copy each game's frame right after it renders (WebGL buffers are cleared afterwards).
+      hostWin.game.events.on('postrender', () => hostBuf.getContext('2d').drawImage(hostWin.game.canvas, 0, 0, 1280, 720));
+
+      phoneEl.src = `/play/?room=${net.room.code}`;
+      await until(() => phoneEl.contentDocument?.getElementById('join-btn') && phoneEl.contentWindow.document.readyState === 'complete');
+      phoneWin = phoneEl.contentWindow;
+      phoneWin.document.getElementById('name').value = 'MAX';
+      phoneWin.document.getElementById('join-btn').click();
+      await until(() => phoneWin.rodeo && net.players.size === 1);
+      phoneWin.rodeo.events.on('postrender', () => {
+        const c = phoneWin.rodeo.canvas;
+        if (phoneBuf.width !== c.width || phoneBuf.height !== c.height) Object.assign(phoneBuf, { width: c.width, height: c.height });
+        phoneBuf.getContext('2d').drawImage(c, 0, 0);
+      });
+      const max = [...net.players.values()][0];
+      Object.assign(max, { aggro: 34, sloppy: 5 }); // lets the bot brain steer MAX's "hands"
+      for (let i = 0; i < 4; i++) net.addBot();
+
+      // MAX's hands: the bot brain decides the tilt, and it reaches the phone as a real
+      // orientation event, so the phone sends it to the host exactly like a person tilting.
+      setInterval(() => {
+        const S = hostWin.game.scene.getScene('race');
+        const r = S.sys.isActive() && S.riders?.find((x) => x.player === max);
+        const target = r ? S.botTilt(r, S.raceTime()) : Math.sin(performance.now() / 700) * 18;
+        cur += (target - cur) * 0.12;
+        view.tilt = (cur * Math.PI) / 180;
+        phoneWin.dispatchEvent(new phoneWin.DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 0, gamma: cur }));
+      }, 16);
+      await sleep(1500);
+      window.demoStatus = 'ready';
+    }
+
+    const race = () => hostWin.game.scene.getScene('race');
+    const anyFinished = () => race().riders?.some((r) => r.state === 1);
+    const startMap = (i) => {
+      const active = hostWin.game.scene.getScenes(true)[0];
+      if (i === 0) hostWin.game.scene.getScene('lobby').start();
+      else active.scene.start('race', { mapIndex: i });
+    };
+
+    async function script() {
+      setMode('title'); await sleep(5000);
+      setMode('lobby'); caption('JOIN IN SECONDS', 'Scan the QR code on the big screen. No app, 1–6 players.'); await sleep(6500);
+
+      startMap(0); setMode('race');
+      caption('YOUR PHONE IS THE GROUND', 'Hold it sideways. Tilt it, and the whole course tilts with it.'); await sleep(5500);
+      caption('STEEPER = FASTER', 'Your rider stays upright in the real world, so they roll downhill.'); await sleep(6500);
+      setMode('phonefocus'); caption('EVERY PHONE IS ITS OWN SCREEN', 'Your close-up view, with your rivals as ghosts.'); await sleep(8000);
+      setMode('race'); caption('TOO STEEP? WIPEOUT.', 'Lean past ~50° and you crash back to the last checkpoint.'); await sleep(6500);
+      caption('LAND LEVEL', 'A clean landing is a PERFECT speed boost. Crooked = you lose speed.');
+      await until(anyFinished, 25000).catch(() => {});
+      await sleep(800);
+      caption('FINISH FIRST = GRAVITY GOD', "Your tilt now tips everyone else's world."); await sleep(7000);
+      race().endRace(); await sleep(1100);
+      setMode('results'); caption('THREE WORLDS · ONE GRAND PRIX', 'Points, crashes and perfect landings all count.'); await sleep(6000);
+
+      startMap(1); setMode('race'); caption('WORLD 2: LOW-GRAVITY SPACE', '0.4× gravity, slick metal and energy gates.'); await sleep(8000);
+      setMode('phonefocus'); await sleep(6000);
+      startMap(2); setMode('race'); caption('WORLD 3: DUSTY DESERT', 'Loose sand, quicksand and a giant wagon wheel.'); await sleep(7500);
+      caption('MOVING OBSTACLES', 'Swinging, bouncing, hopping: time them or get BONKED.'); await sleep(7000);
+      setMode('end'); await sleep(5000);
+    }
+
+    window.runDemo = async ({ record = true } = {}) => {
+      window.demoStatus = 'running';
+      let rec = null;
+      const chunks = [];
+      if (record) {
+        const types = ['video/mp4;codecs=avc1.640028', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+        const mimeType = types.find((t) => MediaRecorder.isTypeSupported(t));
+        rec = new MediaRecorder(comp.captureStream(60), { mimeType, videoBitsPerSecond: 16e6 });
+        rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        rec.start(1000);
+      }
+      try { await script(); } catch (e) { window.demoStatus = 'error ' + e.message; }
+      if (!rec) { window.demoStatus = 'done'; return; }
+      const stopped = new Promise((r) => (rec.onstop = r));
+      rec.stop();
+      await stopped;
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      const ext = rec.mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const res = await fetch(`http://localhost:3001/raw/cyclepathic-rodeo-demo.${ext}`, { method: 'POST', body: blob });
+      window.demoStatus = `saved: ${await res.text()} (${rec.mimeType})`;
+    };
+
+    setup().catch((e) => (window.demoStatus = 'setup error ' + e.message));
+  </script>
+</body>
+</html>

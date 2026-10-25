@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#56CFE1" />
+  <!-- "Add to Home Screen" launches without any browser bars: the only true fullscreen on iPhone. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Rodeo" />
+  <link rel="manifest" id="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <title>Cyclepathic Rodeo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --c: #FF3B5C; --ink: #1E1B2E; --white: #ffffff; --muted: #64748B; --blue: #00A8FF; --blue2: #0077B6; --gold: #FFD60A;
+      --head: "Lilita One", "Arial Black", sans-serif; --body: Nunito, system-ui, sans-serif;
+      /* 5% safe margin from every edge (handoff), or the notch inset if bigger */
+      --mx: max(4vw, env(safe-area-inset-left), env(safe-area-inset-right));
+      --my: max(3vh, env(safe-area-inset-top));
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; background: #56CFE1; color: var(--ink); font-family: var(--body); overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+    button, input { font-family: var(--head); }
+    [hidden] { display: none !important; }
+    .outline { color: #fff; text-shadow: -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink), 2px 2px 0 var(--ink), 0 4px 0 var(--ink); }
+    .sky { background: linear-gradient(#56CFE1, #C8F7FF 70%, #80ED99 70%, #80ED99 78%, #52D14C 78%, #52D14C 82%, #8D5B34 82%); }
+
+    /* ---------- join ---------- */
+    #join { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
+    .card { background: #fff; border: 5px solid var(--ink); border-radius: 22px; box-shadow: 0 8px 0 rgba(0,0,0,.2); }
+    /* Landscape (how the game is played): logo + rider on the left, the form on the right, so it all fits in ~300px of height. */
+    #join .card { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 20px; row-gap: 8px; width: min(720px, 100%); padding: 14px 20px; align-items: center; }
+    .brand { display: flex; flex-direction: column; align-items: center; gap: 4px; grid-row: 1 / span 2; }
+    .form { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+    .notes { grid-column: 1 / span 2; display: flex; flex-direction: column; gap: 4px; }
+    #join h1 { font-size: clamp(24px, 7vh, 36px); animation: float 4s ease-in-out infinite; }
+    #join-rider { width: clamp(70px, 22vh, 110px); height: auto; }
+    #join input { padding: 9px; font-size: 20px; }
+    #join .btn { padding: 10px; min-height: 48px; }
+    @keyframes float { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-6px) rotate(1deg); } }
+    h1 { margin: 0; font-family: var(--head); font-weight: normal; font-size: 40px; line-height: .95; color: var(--gold); text-shadow: -3px -3px 0 var(--ink), 3px -3px 0 var(--ink), -3px 3px 0 var(--ink), 3px 3px 0 var(--ink), 0 6px 0 var(--ink); }
+    h1 span { color: #FF3B5C; }
+    input { width: 100%; font-size: 22px; padding: 12px; border: 4px solid var(--ink); border-radius: 14px; background: #F1F5F9; color: var(--ink); text-align: center; outline: none; }
+    #room { text-transform: uppercase; letter-spacing: 8px; }
+    .btn { font-size: 26px; padding: 12px 28px; border: 4px solid var(--ink); border-radius: 18px; background: var(--blue); color: #fff; box-shadow: 0 6px 0 var(--blue2), 0 6px 0 4px var(--ink); cursor: pointer; text-shadow: 0 3px 0 var(--ink); width: 100%; }
+    .btn:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--blue2), 0 1px 0 4px var(--ink); }
+    .err { color: #C81E3C; min-height: 1.2em; font-weight: 900; font-size: 14px; }
+    .hint { color: var(--muted); font-size: 14px; font-weight: 800; line-height: 1.4; margin: 0; }
+    .tip { color: #0077B6; background: #E0F4FF; border-radius: 12px; padding: 8px 10px; }
+
+    /* ---------- stage: everything in-game, kept landscape even if iOS flips to portrait mid-tilt ---------- */
+    #stage { position: fixed; left: 50%; top: 50%; width: 100vw; height: 100vh; transform: translate(-50%, -50%); display: none; overflow: hidden; background: #56CFE1; }
+    body.playing #join { display: none; }
+    body.playing #stage { display: block; }
+    #game { position: absolute; inset: 0; }
+    #hud { position: absolute; inset: 0; pointer-events: none; }
+    #hud > * { position: absolute; }
+
+    /* Every HUD cluster scales with the screen height (--ui is set from JS: 390px tall = 1) so
+       small phones don't get overlapping pieces and big ones don't get tiny ones. */
+    #rank, #world, #timer, #tilt, #tools { transform: scale(var(--ui, 1)); }
+    /* Rank shield + world title (top-left) */
+    #rank { top: var(--my); left: var(--mx); width: 54px; height: 64px; transform-origin: top left; }
+    #rank svg { width: 100%; height: 100%; overflow: visible; }
+    #world { top: calc(var(--my) + 8px * var(--ui, 1)); left: calc(var(--mx) + 64px * var(--ui, 1)); font-family: var(--head); font-size: 17px; max-width: 22vw; line-height: 1.05; transform-origin: top left; }
+    /* Progress bar (top-centre) */
+    #bar { top: calc(var(--my) + 6px * var(--ui, 1)); left: 50%; transform: translateX(-50%); width: 30vw; height: calc(22px * var(--ui, 1)); border-radius: 11px; background: #262335; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ink); }
+    #bar-fill { position: absolute; left: 3px; top: 3px; bottom: 3px; right: 3px; border-radius: 8px; background: #52D14C; transform-origin: left center; transform: scaleX(0.02); will-change: transform; }
+    .mark { position: absolute; left: 3px; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2.5px solid var(--ink); opacity: .75; will-change: transform; }
+    .mark.me { width: 20px; height: 20px; margin: -10px 0 0 -10px; opacity: 1; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ink); z-index: 2; }
+    /* Timer pill (top-right) */
+    #timer { top: var(--my); right: var(--mx); transform-origin: top right; padding: 6px 14px 6px 10px; border-radius: 22px; background: rgba(20,18,31,.78); border: 3px solid #fff; color: #fff; font: 700 20px ui-monospace, Menlo, Consolas, monospace; display: flex; align-items: center; gap: 8px; }
+    #timer svg { width: 20px; height: 20px; }
+    /* Balance meter (bottom-centre): how close the ground under you is to too steep */
+    #balance { bottom: calc(var(--my) - 4px); left: 50%; transform: translateX(-50%) scale(var(--ui, 1)); transform-origin: bottom center; width: 150px; text-align: center; }
+    #balance svg { width: 150px; height: 84px; overflow: visible; }
+    #balance .lbl { font-family: var(--head); font-size: 13px; margin-top: -6px; }
+    /* Tilt icon (bottom-right): a landscape phone that turns with yours */
+    #tilt { bottom: var(--my); right: var(--mx); width: 76px; height: 76px; transform-origin: bottom right; }
+    #tilt svg { width: 100%; height: 100%; overflow: visible; }
+    /* Callouts */
+    #count { top: 46%; left: 50%; transform: translate(-50%, -50%); font-family: var(--head); font-size: calc(96px * var(--ui, 1)); color: var(--gold); }
+    #callout { top: 34%; left: 50%; transform: translate(-50%, -50%) scale(.6); font-family: var(--head); font-size: calc(54px * var(--ui, 1)); white-space: nowrap; opacity: 0; transition: opacity .15s, transform .15s cubic-bezier(.3,1.8,.5,1); }
+    #callout.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    #callout small { display: block; font-size: 18px; text-align: center; }
+    #banner { top: calc(var(--my) + 72px * var(--ui, 1)); left: 50%; transform: translateX(-50%); font-family: var(--head); font-size: calc(16px * var(--ui, 1)); background: rgba(213,0,249,.85); color: #fff; border: 3px solid var(--ink); border-radius: 14px; padding: 6px 14px; white-space: nowrap; }
+    #tools { bottom: var(--my); left: var(--mx); display: flex; gap: 8px; pointer-events: auto; transform-origin: bottom left; }
+    #tools button { font-size: 14px; min-height: 44px; padding: 8px 12px; background: rgba(255,255,255,.88); color: var(--ink); border: 3px solid var(--ink); border-radius: 12px; }
+    #touch { bottom: calc(var(--my) + 86px); right: var(--mx); display: none; gap: 8px; pointer-events: auto; }
+    #touch.on { display: flex; }
+    #touch button { font-size: 22px; width: 60px; height: 52px; border: 4px solid var(--ink); border-radius: 14px; background: var(--gold); color: var(--ink); }
+    #sensor-hint { bottom: calc(var(--my) + 56px); left: var(--mx); font-size: 13px; font-weight: 900; color: var(--ink); background: rgba(255,255,255,.8); border-radius: 8px; padding: 2px 6px; }
+    #sensor-hint:empty { display: none; }
+
+    /* ---------- waiting: how to play + live tilt demo ---------- */
+    #wait { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; gap: 18px; padding: var(--my) var(--mx); }
+    body.waiting #wait { display: flex; }
+    body.waiting #hud { display: none; }
+    #wait .card { padding: 12px 16px; }
+    .demo { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+    #demo { width: 200px; height: 150px; border: 4px solid var(--ink); border-radius: 16px; background: #C8F7FF; display: block; }
+    #demo-state { font-family: var(--head); font-size: 16px; }
+    .rules { max-width: 470px; }
+    .rules .title { font-family: var(--head); font-size: 26px; line-height: 1.05; }
+    .rules .msg { font-size: 14px; font-weight: 900; color: #0077B6; margin: 2px 0 6px; }
+    .rules ol { margin: 0; padding-left: 20px; font-size: 14px; font-weight: 800; line-height: 1.35; color: #334155; }
+    .rules li { margin-bottom: 3px; }
+    .rules b { font-family: var(--head); font-weight: normal; color: var(--ink); font-size: 14px; }
+
+    /* ---------- rotate prompt: only until you've turned to landscape once ---------- */
+    #rotate { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 24px; text-align: center; z-index: 10; }
+    body.need-rotate #rotate { display: flex; }
+    #rotate .phone { width: 52px; height: 88px; border: 6px solid var(--ink); border-radius: 12px; background: #fff; animation: turn 1.6s ease-in-out infinite; }
+    #rotate p { font-family: var(--head); font-size: 30px; margin: 0; line-height: 1.1; }
+    #rotate small { font-size: 14px; font-weight: 900; max-width: 300px; }
+    @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  </style>
+</head>
+<body class="sky">
+  <section id="join">
+    <div class="card">
+      <div class="brand">
+        <h1>CYCLEPATHIC<br /><span>RODEO</span></h1>
+        <canvas id="join-rider" width="240" height="220"></canvas>
+      </div>
+      <div class="form">
+        <input id="room" maxlength="4" placeholder="ROOM" autocomplete="off" />
+        <input id="name" maxlength="10" placeholder="YOUR NAME" autocomplete="off" />
+        <button id="join-btn" class="btn">JOIN</button>
+        <div class="err" id="err"></div>
+      </div>
+      <div class="notes">
+        <p class="hint">Your phone is the ground. Tilt it to roll, but too steep and you wipe out!</p>
+        <p class="hint tip" id="ios-tip" hidden>iPhone tip: for true fullscreen tap Share ⬆ then "Add to Home Screen", and open Rodeo from your home screen.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="stage" class="sky">
+    <div id="game"></div>
+    <div id="hud">
+      <div id="rank"></div>
+      <div id="world" class="outline"></div>
+      <div id="bar"><div id="bar-fill"></div></div>
+      <div id="timer">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" fill="none" stroke="#fff" stroke-width="3" /><path d="M12 13V8M9 2h6" stroke="#fff" stroke-width="3" stroke-linecap="round" /></svg>
+        <span id="time">00:00.00</span>
+      </div>
+      <div id="balance">
+        <svg viewBox="-75 -75 150 84">
+          <g id="zones"></g>
+          <line id="needle" x1="0" y1="0" x2="0" y2="-58" stroke="#1E1B2E" stroke-width="7" stroke-linecap="round" />
+          <line id="needle-in" x1="0" y1="0" x2="0" y2="-58" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+          <circle r="9" fill="#FFD60A" stroke="#1E1B2E" stroke-width="4" />
+        </svg>
+        <div class="lbl outline" id="balance-lbl">BALANCE</div>
+      </div>
+      <div id="tilt">
+        <svg viewBox="-50 -50 100 100">
+          <path d="M-40 -22 A 46 46 0 0 1 -22 -40" fill="none" stroke="#1E1B2E" stroke-width="9" stroke-linecap="round" />
+          <path d="M-40 -22 A 46 46 0 0 1 -22 -40" fill="none" stroke="#FFD60A" stroke-width="5" stroke-linecap="round" />
+          <path d="M40 22 A 46 46 0 0 1 22 40" fill="none" stroke="#1E1B2E" stroke-width="9" stroke-linecap="round" />
+          <path d="M40 22 A 46 46 0 0 1 22 40" fill="none" stroke="#FFD60A" stroke-width="5" stroke-linecap="round" />
+          <g id="tilt-phone"><rect x="-30" y="-17" width="60" height="34" rx="8" fill="#fff" stroke="#1E1B2E" stroke-width="5" /><rect x="-20" y="-10" width="40" height="20" rx="3" fill="#56CFE1" /></g>
+        </svg>
+      </div>
+      <div id="banner" hidden></div>
+      <div id="count" class="outline"></div>
+      <div id="callout" class="outline"></div>
+      <div id="sensor-hint"></div>
+      <div id="tools">
+        <button id="fullscreen" hidden>FULLSCREEN</button>
+        <button id="invert">FLIP TILT</button>
+      </div>
+      <div id="touch">
+        <button id="left">&lt;</button>
+        <button id="right">&gt;</button>
+      </div>
+    </div>
+
+    <div id="wait">
+      <div class="demo card">
+        <canvas id="demo" width="400" height="300"></canvas>
+        <div id="demo-state">TILT ME!</div>
+      </div>
+      <div class="rules card">
+        <div class="title" id="wait-title">YOU'RE IN!</div>
+        <div class="msg" id="wait-msg">WAITING FOR THE HOST TO START</div>
+        <ol>
+          <li><b>YOUR PHONE IS THE GROUND.</b> Tilt it and the course tilts with it. Your rider stays upright. Try it on the left!</li>
+          <li><b>STEEPER = FASTER...</b> but if the ground under you gets too steep (past ~50°) you <b>WIPE OUT</b>. Watch the balance meter. Mud, sand and slick metal are less forgiving.</li>
+          <li><b>LAND LEVEL.</b> In the air, level out the ground you're landing on. Clean = <b>PERFECT</b> speed boost. Crooked = <b>SLOPPY</b>, you lose speed. Way off = crash.</li>
+          <li><b>TIME THE OBSTACLES.</b> Swinging, bouncing and flashing things <b>BONK</b> you backwards: speed up or brake to slip past. <b>CRASH = LAST CHECKPOINT</b>, clock still running.</li>
+          <li><b>FINISH FIRST</b> and you become a <b>GRAVITY GOD</b>: your tilt tips everyone else's world!</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div id="rotate" class="sky">
+    <div class="phone"></div>
+    <p class="outline">TURN YOUR PHONE<br />SIDEWAYS</p>
+    <small>Hold it in landscape to play. If it won't turn, switch off rotation lock.</small>
+  </div>
+
+  <script src="/vendor/phaser.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="./js/phone.js"></script>
+</body>
+</html>
