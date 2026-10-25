@@ -4,6 +4,7 @@ import { RiderView, PLAYERS } from '/shared/rig.js';
 import { MAPS } from '/shared/maps.js';
 import { textStyle, cloudTex } from '/shared/art.js';
 import { sunnyBackdrop, card, button } from './ui.js';
+import { audio } from '/shared/audio.js';
 
 const RULES = [
   ['YOUR PHONE IS THE GROUND.', 'Hold it sideways. Tilt it and the course tilts with it.'],
@@ -21,6 +22,8 @@ export class LobbyScene extends Phaser.Scene {
   create() {
     const { width } = this.scale;
     resetScores();
+    audio.music('lobby');
+    this.lastCount = players.size;
     cloudTex(this);
     sunnyBackdrop(this);
 
@@ -63,7 +66,7 @@ export class LobbyScene extends Phaser.Scene {
     });
     this.startBtn = button(this, 1074, 488, 280, 76, 'START RACE', () => this.start());
 
-    this.add.text(width / 2, 712, 'SPACE start · B add bot · K keyboard rider (←/→) · X remove bots · click ✕ on a rider to remove them',{ fontFamily: 'Nunito, sans-serif', fontSize: '15px', fontStyle: '800', color: '#1E1B2E', backgroundColor: 'rgba(255,255,255,0.75)', padding: { x: 10, y: 3 } }).setOrigin(0.5, 1).setDepth(5);
+    this.add.text(width / 2, 712, 'SPACE start · B add bot · K keyboard rider (←/→) · X remove bots · click ✕ on a rider to remove them · M music · N sounds',{ fontFamily: 'Nunito, sans-serif', fontSize: '15px', fontStyle: '800', color: '#1E1B2E', backgroundColor: 'rgba(255,255,255,0.75)', padding: { x: 10, y: 3 } }).setOrigin(0.5, 1).setDepth(5);
 
     // Rider slots
     this.slots = [];
@@ -108,6 +111,8 @@ export class LobbyScene extends Phaser.Scene {
     this.slots.forEach((s) => s.view?.destroy());
     this.slots = [];
     const list = [...players.values()];
+    if (list.length > this.lastCount) audio.sfx('join');
+    this.lastCount = list.length;
     const w = 168;
     const x0 = this.scale.width / 2 - ((w + 14) * MAX_PLAYERS - 14) / 2;
     for (let i = 0; i < MAX_PLAYERS; i++) {

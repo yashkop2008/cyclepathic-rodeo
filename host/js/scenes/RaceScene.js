@@ -5,6 +5,7 @@ import { buildWorld, textStyle, dotTexture } from '/shared/art.js';
 import { warmRig } from '/shared/rig.js';
 import { STATE, WHY } from '/shared/protocol.js';
 import { Unicycle, TUNING } from '../unicycle.js';
+import { audio } from '/shared/audio.js';
 
 const DEG = Math.PI / 180;
 const POINTS = [10, 8, 6, 5, 4, 3];
@@ -86,6 +87,8 @@ export class RaceScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ESC', () => this.endRace());
 
     this.buildHud(width, height);
+    audio.music(this.map.key);
+    this.lastCount = -1;
   }
 
   // ------------------------------------------------------------ world
@@ -377,6 +380,7 @@ export class RaceScene extends Phaser.Scene {
         if (hit) ev = r.bonk(time, obstaclePose(this.track, hit, t).x);
       }
       if (r.landSeq !== landSeq) this.dust.explode(Math.min(24, 4 + Math.round(r.landHit * 1.5)), r.x, r.ground.y);
+      if (ev === 'crash' || ev === 'bonk' || ev === 'perfect') audio.sfx(ev);
       if (ev === 'crash') this.say(`${r.player.name.toUpperCase()}: ${WHY[r.crashWhy]}`, r.player.color);
       else if (ev === 'bonk') this.say(`${r.player.name.toUpperCase()} GOT BONKED!`, r.player.color);
       else if (ev === 'perfect') this.say(`${r.player.name.toUpperCase()}: PERFECT LANDING!`, '#FFD60A');
@@ -384,6 +388,7 @@ export class RaceScene extends Phaser.Scene {
         r.finish(t);
         const place = this.riders.filter((o) => o.state === STATE.FINISHED).length;
         if (!this.firstFinishAt) this.firstFinishAt = time;
+        audio.sfx('finish');
         this.say(`${r.player.name.toUpperCase()} FINISHED ${ordinal(place)} - ${fmtTime(t)}`, '#52D14C');
         if (place === 1) this.say('FINISHERS ARE NOW GRAVITY GODS!', '#FF8FA3');
       }
@@ -394,6 +399,7 @@ export class RaceScene extends Phaser.Scene {
     const order = this.hudStandings();
     const lead = order[0];
     if (live && lead && lead.player.id !== this.leaderId && t > 2000) {
+      if (this.leaderId) audio.sfx('lead');
       if (this.leaderId) this.say(`${lead.player.name.toUpperCase()} TAKES THE LEAD!`, lead.player.color);
       this.leaderId = lead.player.id;
     } else if (!this.leaderId && lead) this.leaderId = lead.player.id;
@@ -453,6 +459,12 @@ export class RaceScene extends Phaser.Scene {
   }
 
   updateHud(time, t, order) {
+    // Countdown blips, then GO!
+    const count = time < this.startAt ? Math.ceil((this.startAt - time) / 1000) : 0;
+    if (count !== this.lastCount) {
+      if (this.lastCount !== null) audio.sfx(count > 0 ? 'beep' : 'go');
+      this.lastCount = count;
+    }
     if (time < this.startAt) this.hudCenter.setFontSize(110).setText(String(Math.ceil((this.startAt - time) / 1000)));
     else if (time < this.startAt + 800) this.hudCenter.setFontSize(110).setText('GO!');
     else if (this.firstFinishAt) this.hudCenter.setFontSize(36).setText(`RACE ENDS IN ${Math.max(0, Math.ceil((this.firstFinishAt + FINISH_TIMEOUT_MS - time) / 1000))}`);

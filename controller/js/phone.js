@@ -14,6 +14,10 @@ import { MAPS, buildTrack, groundAt, progressOf, leanLimit, RULES } from '/share
 import { buildWorld, dotTexture, textStyle } from '/shared/art.js';
 import { RiderView, warmRig, drawRigAt, PLAYERS, POSES } from '/shared/rig.js';
 import { R, STATE, WHY } from '/shared/protocol.js';
+import { audio } from '/shared/audio.js';
+
+// Phones play the same music as the big screen, but softly underneath it.
+audio.setMusicVolume(0.22);
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -193,6 +197,15 @@ setInterval(() => {
 
 $('invert').onclick = () => { invert = !invert; store.set('cr-invert', invert ? '1' : '0'); };
 
+// Sound toggles (remembered on this phone)
+function syncSound() {
+  for (const k of ['music', 'sfx']) $(`mute-${k}`).classList.toggle('off', audio.muted[k]);
+}
+$('mute-music').onclick = () => audio.toggle('music');
+$('mute-sfx').onclick = () => audio.toggle('sfx');
+audio.onChange(syncSound);
+syncSound();
+
 // ---------------------------------------------------------------- join screen + demo rider
 
 let joinSpin = 0;
@@ -368,7 +381,11 @@ function updateHud(scene, snap, t, dt) {
     const l = Math.abs(lean);
     label = l < RULES.perfectLean ? 'LANDING: PERFECT' : l < RULES.sloppyLean ? 'LANDING: OK' : 'LEVEL OUT!';
     color = l < RULES.perfectLean ? '#52D14C' : l < RULES.sloppyLean ? '#ffffff' : '#FF3B5C';
-  } else if (Math.abs(lean) > limit) [label, color] = ['TOO STEEP!', '#FF3B5C'];
+  } else if (Math.abs(lean) > limit) {
+    [label, color] = ['TOO STEEP!', '#FF3B5C'];
+    // Urgent blips while you're past the limit (you crash if it lasts).
+    if (performance.now() - (hud.warnAt || 0) > 160) (hud.warnAt = performance.now(), audio.sfx('warn'));
+  }
   else if (Math.abs(lean) > limit * 0.75) [label, color] = ['CAREFUL', '#FFD60A'];
   setText('balance-lbl', label);
   setStyle('balance-lbl', 'color', color);
@@ -462,6 +479,9 @@ function applyState(s) {
   }
   if (Number.isInteger(s.colorIdx)) net.colorIdx = s.colorIdx;
   const waiting = s.phase === 'lobby' || s.phase === 'results' || s.phase === 'gone';
+  if (s.phase === 'lobby') audio.music('lobby');
+  else if (s.phase === 'results') audio.music('results');
+  else if (s.phase === 'gone') audio.music(null);
   document.body.classList.toggle('waiting', waiting);
   if (s.phase === 'results') {
     $('wait-title').textContent = s.final ? (s.place === 1 ? 'GRAND PRIX CHAMPION!' : `GRAND PRIX: ${ordinal(s.place)}`.toUpperCase()) : 'RACE OVER!';
@@ -563,6 +583,13 @@ class PhoneScene extends Phaser.Scene {
     const snap = sampleSnap();
     if (!snap || (snap.ph !== 'race' && snap.ph !== 'countdown')) return;
     if (snap.m !== this.mapIndex) this.buildMap(snap.m, snap.r);
+    audio.music(this.map.key);
+    const count = snap.ph === 'countdown' ? snap.cd : 0;
+    if (count !== this.lastCount) {
+      if (count > 0) audio.sfx('beep');
+      else if (this.lastCount > 0) audio.sfx('go');
+      this.lastCount = count;
+    }
     const cam = this.cameras.main;
     const t = snap.t;
     const seen = new Set();
@@ -651,36 +678,42 @@ class PhoneScene extends Phaser.Scene {
     if (row[R.CRASH_SEQ] !== s.crash) {
       s.crash = row[R.CRASH_SEQ];
       callout(WHY[row[R.CRASH_WHY]] || 'CRASH!', 'BACK TO THE LAST CHECKPOINT', '#FF3B5C', 1400);
+      audio.sfx('crash');
       this.cameras.main.shake(350, 0.02);
       navigator.vibrate?.([120, 60, 200]);
     }
     if (row[R.PERFECT_SEQ] !== s.perfect) {
       s.perfect = row[R.PERFECT_SEQ];
       callout('PERFECT!', 'SPEED BOOST', '#FFD60A');
+      audio.sfx('perfect');
       navigator.vibrate?.([30, 40, 30]);
     }
     if (row[R.BONK_SEQ] !== s.bonk) {
       s.bonk = row[R.BONK_SEQ];
       callout('BONK!', 'TIME IT BETTER', '#FF6D00', 1000);
+      audio.sfx('bonk');
       this.cameras.main.shake(250, 0.015);
       navigator.vibrate?.([80, 40, 80]);
     }
     if (row[R.SLOPPY_SEQ] !== s.sloppy) {
       s.sloppy = row[R.SLOPPY_SEQ];
       callout('SLOPPY LANDING', 'LEVEL OUT TO KEEP YOUR SPEED', '#FFB74D', 1000);
+      audio.sfx('sloppy');
       navigator.vibrate?.(60);
     }
     if (row[R.PAD_SEQ] !== s.pad) {
       s.pad = row[R.PAD_SEQ];
       callout('BOING!', '', '#00F5D4', 700);
+      audio.sfx('boing');
     }
     if (row[R.CP] !== s.cp) {
-      if (row[R.CP] > s.cp) callout('CHECKPOINT!', '', '#52D14C', 900);
+      if (row[R.CP] > s.cp) (callout('CHECKPOINT!', '', '#52D14C', 900), audio.sfx('checkpoint'));
       s.cp = row[R.CP];
     }
     if (row[R.STATE] === STATE.FINISHED && !r.finished) {
       r.finished = true;
       callout('FINISHED!', fmtTime(row[R.FINISH_MS]), '#52D14C', 2200);
+      audio.sfx('finish');
       navigator.vibrate?.([60, 60, 60, 60, 200]);
     }
   }
@@ -688,6 +721,7 @@ class PhoneScene extends Phaser.Scene {
   /** Your own landing: the harder you hit, the bigger the thud. */
   thud(r, hit) {
     const k = Math.min(1, hit / 16);
+    audio.sfx('land', k);
     this.cameras.main.shake(100 + k * 200, 0.003 + k * 0.016);
     navigator.vibrate?.(Math.round(15 + k * 100));
   }

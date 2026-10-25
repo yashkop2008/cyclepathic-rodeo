@@ -104,6 +104,16 @@ Simulated with "human-like" riders plus bots: zero landing crashes across all th
 0–7 bonks each, races ~22–56 s. Riders holding a fixed tilt mostly fail to finish (wipe out on drops, land sloppy,
 stall on climbs). Every climb is kept below the lean limit of its surface (a rider can always get up it).
 
+## Sound
+
+All music and sound effects are 8-bit chiptune generated live with Web Audio (`shared/audio.js`, no audio files):
+a track per world (bouncy Grassland, floaty minor-key Space, galloping western Desert) plus lobby and results
+themes, and effects for the countdown, GO, crashes, bonks, perfect/sloppy landings, bounce pads, checkpoints,
+finishes, lead changes and a warning blip when your ground is too steep. Phones play the music quietly under the
+big screen and add their own effects. Mute music or effects with the 🎵 / 🔊 buttons (big screen: right edge,
+or `M` / `N`; phones: bottom-left). Each device remembers its choice. Sound starts after the first tap or key press
+(browser rule).
+
 ## Performance and smoothness
 
 - **Never draw vector circles in Phaser Graphics** (`fillCircle`/`strokeCircle`/`arc`): Phaser builds each from

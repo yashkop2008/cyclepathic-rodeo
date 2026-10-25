@@ -13,10 +13,34 @@
   <style>
     html, body { margin: 0; height: 100%; background: #1e1b2e; overflow: hidden; }
     #game { width: 100vw; height: 100vh; }
+    /* Sound toggles: small, out of the way on the right edge, readable on a TV */
+    #sound { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; z-index: 5; }
+    #sound button { width: 52px; height: 52px; border-radius: 16px; border: 4px solid #1e1b2e; background: rgba(255,255,255,.9); font-size: 24px; cursor: pointer; box-shadow: 0 4px 0 rgba(0,0,0,.25); opacity: .8; }
+    #sound button:hover { opacity: 1; }
+    #sound button.off { background: #94a3b8; opacity: .9; text-decoration: line-through; }
   </style>
 </head>
 <body>
   <div id="game"></div>
+  <div id="sound">
+    <button id="mute-music" title="Music on/off (M)" aria-label="Music on/off">🎵</button>
+    <button id="mute-sfx" title="Sound effects on/off (N)" aria-label="Sound effects on/off">🔊</button>
+  </div>
+  <script type="module">
+    import { audio } from '/shared/audio.js';
+    const sync = () => {
+      for (const k of ['music', 'sfx']) document.getElementById(`mute-${k}`).classList.toggle('off', audio.muted[k]);
+    };
+    document.getElementById('mute-music').onclick = () => audio.toggle('music');
+    document.getElementById('mute-sfx').onclick = () => audio.toggle('sfx');
+    addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.key === 'm' || e.key === 'M') audio.toggle('music');
+      if (e.key === 'n' || e.key === 'N') audio.toggle('sfx');
+    });
+    audio.onChange(sync);
+    sync();
+  </script>
   <script src="/vendor/phaser.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="./js/main.js"></script>

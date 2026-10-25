@@ -5,6 +5,7 @@ import { RiderView } from '/shared/rig.js';
 import { textStyle } from '/shared/art.js';
 import { sunnyBackdrop, card, button, rankBadge } from './ui.js';
 import { fmtTime, ordinal } from './RaceScene.js';
+import { audio } from '/shared/audio.js';
 
 const AUTO_ADVANCE_MS = 14000;
 const SMALL = { fontFamily: 'Nunito, sans-serif', fontSize: '16px', fontStyle: '900', color: '#1E1B2E' };
@@ -28,6 +29,7 @@ export class ResultsScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const th = this.map.theme;
     sunnyBackdrop(this, { top: th.sky[0], bottom: th.sky[1], ground: false });
+    audio.music('results');
     this.views = [];
     this.events.once('shutdown', () => this.views.forEach((v) => v.destroy()));
 

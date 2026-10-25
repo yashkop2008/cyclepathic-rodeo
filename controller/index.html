@@ -91,7 +91,10 @@
     #callout.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     #callout small { display: block; font-size: 18px; text-align: center; }
     #banner { top: calc(var(--my) + 72px * var(--ui, 1)); left: 50%; transform: translateX(-50%); font-family: var(--head); font-size: calc(16px * var(--ui, 1)); background: rgba(213,0,249,.85); color: #fff; border: 3px solid var(--ink); border-radius: 14px; padding: 6px 14px; white-space: nowrap; }
-    #tools { bottom: var(--my); left: var(--mx); display: flex; gap: 8px; pointer-events: auto; transform-origin: bottom left; }
+    #sound { position: absolute; bottom: var(--my); left: var(--mx); display: flex; gap: 8px; z-index: 3; transform: scale(var(--ui, 1)); transform-origin: bottom left; }
+    #sound button { width: 48px; height: 48px; font-size: 22px; padding: 0; background: rgba(255,255,255,.88); border: 3px solid var(--ink); border-radius: 12px; }
+    #sound button.off { background: #94A3B8; text-decoration: line-through; opacity: .85; }
+    #tools { bottom: var(--my); left: calc(var(--mx) + 112px * var(--ui, 1)); display: flex; gap: 8px; pointer-events: auto; transform-origin: bottom left; }
     #tools button { font-size: 14px; min-height: 44px; padding: 8px 12px; background: rgba(255,255,255,.88); color: var(--ink); border: 3px solid var(--ink); border-radius: 12px; }
     #touch { bottom: calc(var(--my) + 86px); right: var(--mx); display: none; gap: 8px; pointer-events: auto; }
     #touch.on { display: flex; }
@@ -185,6 +188,11 @@
       </div>
     </div>
 
+    <!-- Sound toggles: outside the HUD so they also show on the waiting screen -->
+    <div id="sound">
+      <button id="mute-music" aria-label="Music on/off">🎵</button>
+      <button id="mute-sfx" aria-label="Sound effects on/off">🔊</button>
+    </div>
     <div id="wait">
       <div class="demo card">
         <canvas id="demo" width="400" height="300"></canvas>
