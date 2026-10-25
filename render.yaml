@@ -1,0 +1,17 @@
+# Render blueprint: one Node web service. Render serves it over HTTPS (which phones need
+# for motion sensors) and supports the WebSockets Socket.IO uses.
+services:
+  - type: web
+    name: cyclepathic-rodeo
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/info
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+    domains:
+      - cyclepathic.rodeo
+      - www.cyclepathic.rodeo
